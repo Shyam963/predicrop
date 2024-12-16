@@ -1,0 +1,73 @@
+A Summary of code invloved in it :
+
+
+import requests
+import pandas as pd
+import xgboost as xgb
+import gradio as gr
+
+# Load your XGBoost model (ensure correct path)
+xgb_model = xgb.XGBRegressor()
+xgb_model.load_model("my_model.json")  
+
+def fetch_weather(location, api_key):
+    url = f"http://api.openweathermap.org/data/2.5/weather?q={location}&appid={api_key}&units=metric"
+    response = requests.get(url)
+    if response.status_code == 200:
+        return response.json()
+    else:
+        print(f"Error fetching weather data: {response.status_code}, {response.text}")
+        return None
+
+def predict_yield(location, Fertilizer, Nitrogen, Phosphorus, Potassium, api_key):
+    # Fetch weather data
+    weather_data = fetch_weather(location, api_key)
+    if weather_data is None:
+        return "Error fetching weather data. Please check the location and API key."
+
+    # Extract relevant weather features (handle missing values)
+    Rainfall = weather_data.get("rain", {}).get("1h", 0)  
+    Temperature = weather_data["main"]["temp"]
+
+    # Create input data for the model
+    input_data = pd.DataFrame({
+        'Rain Fall (mm)': [Rainfall],
+        'Fertilizer': [Fertilizer],
+        'Temperatue': [Temperature],
+        'Nitrogen (N)': [Nitrogen],
+        'Phosphorus (P)': [Phosphorus],
+        'Potassium (K)': [Potassium]
+    })
+    print("Input Data for Model:", input_data)  
+
+    # Make prediction and calculate percentage
+    try:
+        prediction = xgb_model.predict(input_data)[0]
+        percentage_yield = prediction * 100  
+        return f"Predicted Yield: {percentage_yield:.2f}%"  # Return percentage with formatting
+    except Exception as e:
+        print(f"Error during prediction: {e}")
+        return f"Prediction error: {e}"  
+
+with gr.Blocks() as iface:
+    gr.Markdown("# Crop Yield Prediction with Weather")
+
+    with gr.Row():
+        location = gr.Textbox(label="Location (City Name)")
+        Fertilizer = gr.Number(label="Fertilizer")
+    with gr.Row():
+        Nitrogen = gr.Number(label="Nitrogen (N)")
+        Phosphorus = gr.Number(label="Phosphorus (P)")
+        Potassium = gr.Number(label="Potassium (K)")
+
+    api_key = gr.Textbox(label="OpenWeatherMap API Key", type="password")  
+    output = gr.Textbox(label="Predicted Yield") # Changed to Textbox to display formatted output
+
+    submit_button = gr.Button("Predict")
+    submit_button.click(
+        fn=predict_yield,
+        inputs=[location, Fertilizer, Nitrogen, Phosphorus, Potassium, api_key],
+        outputs=output
+    )
+
+iface.launch(share=True)
